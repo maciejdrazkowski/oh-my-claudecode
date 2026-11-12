@@ -872,8 +872,9 @@ function findActionableKeywordMatch(
 //     (also after please, let's, I want) with an optional the/a/my/our/your, or turn/switch autopilot on.
 // "full auto" and "fullsend" are ordinary hardware phrases: only an activation phrase, a line-leading command verb
 // or ":" plus a verb count. A line with a non-ASCII letter is not English and keeps the generic check.
-// Anything else that passes rules 1 and 2 and is not a status line keeps the generic activation-verb check;
-// phrasings beyond this grammar (an open verb list, other languages) are out of scope.
+//  4. Anything else that passes rules 1 and 2 and is not a status line keeps the generic activation-verb check (an
+//     activation verb elsewhere in the clause: "Run in autopilot mode", "fix issue with autopilot in parser module").
+// Phrasings beyond this grammar (an open verb list, other languages) are out of scope.
 const AUTOPILOT_COMMAND_VERBS = 'fix|debug|investigate|resolve|handle|patch|address|implement|build|create|make|run|start|enable|activate|invoke|trigger|launch|plan|add|write|refactor|update|remove|migrate|finish|continue|do|go|test|review|check|verify|audit|analy[sz]e|inspect|deploy|install|configure|document|explain|find|search|generate|convert|ship|release|merge|prepare|design|draft|upgrade|rename|clean|optimi[sz]e|rewrite|summari[sz]e|compare|bring|ping|seed';
 const AUTOPILOT_HYPHENATED_VERB = '(?:re|pre|un|co|de|double|cross|multi)-\\p{L}{2,}';
 const AUTOPILOT_COMMAND_WORD = `(?:(?:${AUTOPILOT_COMMAND_VERBS})|${AUTOPILOT_HYPHENATED_VERB})`;
@@ -986,9 +987,14 @@ function findActionableAutopilotAliasMatch(
     if (AUTOPILOT_NAMESPACE_PREFIX.test(linePrefix) || /^[ \t]*[$/!]$/.test(linePrefix)) {
       return { keyword, position: match.index };
     }
-    const from = Math.max(0, match.index - AUTOPILOT_CONTEXT_WINDOW);
-    const context = text.slice(from, match.index + keyword.length + AUTOPILOT_CONTEXT_WINDOW);
-    if (isInformationalKeywordContext(context, match.index - from, keyword.length, keyword)) continue;
+    // A command that opens its line with a command verb is judged on its own line, so a help question on an
+    // earlier line does not veto it; every other mention is judged on a bounded window around it.
+    const { start: lineStart, end: lineEnd } = getLineBounds(text, match.index);
+    const ownLine = /^[ \t]*$/.test(linePrefix)
+      && AUTOPILOT_COMMAND_AFTER.test(text.slice(match.index + keyword.length, match.index + keyword.length + 60));
+    const from = ownLine ? lineStart : Math.max(0, match.index - AUTOPILOT_CONTEXT_WINDOW);
+    const to = ownLine ? lineEnd : match.index + keyword.length + AUTOPILOT_CONTEXT_WINDOW;
+    if (isInformationalKeywordContext(text.slice(from, to), match.index - from, keyword.length, keyword)) continue;
 
     return { keyword, position: match.index };
   }
