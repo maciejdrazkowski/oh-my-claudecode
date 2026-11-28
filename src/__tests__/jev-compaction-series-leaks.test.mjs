@@ -179,6 +179,9 @@ describe('what leaves with a series: no request body and no written file holds t
   });
 });
 
+// MCP names of plain words: the numbers about a series read them as their server and the rest, so a long one is counted as written.
+const PLAIN_MCP = ['mcp__plugin_context7_context7__resolve-library-id', 'mcp__plugin_context7_context7__get-library-docs', 'mcp__k8s__pods_list_in_namespace'];
+
 describe('what leaves with a series: the names of the tools in the numbers about a series', () => {
   it('counts a name a mask changes, or one that is too long, under a neutral name and keeps the others', async () => {
     const names = ['Read', HEX32, `mcp__${UUID}__list`, XAI, 'mcp__claude_ai_Google_Calendar__list_events', 'a'.repeat(201), 'b'.repeat(200)];
@@ -190,11 +193,21 @@ describe('what leaves with a series: the names of the tools in the numbers about
   });
 
   it('reads an MCP name part by part: a long name of plain words is counted as written, a part that a mask changes is not', async () => {
-    const plain = ['mcp__plugin_context7_context7__resolve-library-id', 'mcp__plugin_context7_context7__get-library-docs', 'mcp__k8s__pods_list_in_namespace'];
-    const hidden = [`mcp__srv__${XAI}`, `mcp__${ASIA}__list`, join('mcp__server__Zq8Tr4Lm2XpB9KwD', '__', TAIL), 'mcp__srv__password='];
-    const run = await compact(seriesOf([...plain, ...hidden].map(named).join('\n')));
+    // The second check reads each part on its own: a part the shared mask changes holds the series whole (the next case). A name the shared
+    // mask changes read whole, or a part only the mask of a series changes, is counted under the neutral name.
+    const hidden = [`mcp__srv__${XAI}`, join('mcp__server__Zq8Tr4Lm2XpB9KwD', '__', TAIL), 'mcp__srv__password='];
+    const run = await compact(seriesOf([...PLAIN_MCP, ...hidden].map(named).join('\n')));
     const { tools } = run.asked.find((x) => x.text.includes('file-31.txt')).series;
-    expect(tools).toEqual({ ...Object.fromEntries(plain.map((name) => [name, 1])), masked_tool: hidden.length, Read: 6 });
+    expect(tools).toEqual({ ...Object.fromEntries(PLAIN_MCP.map((name) => [name, 1])), masked_tool: hidden.length, Read: 6 });
+  });
+
+  it('a part of an MCP name that the shared mask takes for a key holds the series whole: it is not asked about, and the key is neither sent nor written', async () => {
+    const series = seriesOf([...PLAIN_MCP, `mcp__${ASIA}__list`].map(named).join('\n'));
+    const run = await compact(series);
+    expect(run.asked.some((x) => x.text.includes('file-31.txt'))).toBe(false);
+    expect(run.record.f2.series_question).toMatchObject({ items: 2, secret: 1 });
+    expect(run.conversation).toContain(series);
+    expect({ sent: holds(run.sent, ASIA), written: holds(run.written, ASIA) }).toEqual({ sent: false, written: false });
   });
 
   it('counts a name that a mask changes at the start of its trace under the neutral name too', async () => {
